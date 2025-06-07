@@ -3,95 +3,111 @@ import os
 import re
 from OpenQuakeUHS.core.spectrum_parser import UHSSpectrum
 
-def plot_uhs_sets(mean_files, quantile_files, rlz_files, poe=0.687, title=None):
+def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], title=None):
     """
-    Plots all UHS spectra grouped by type with stylized formatting:
-    - Realizations: gray dashed lines labeled once
-    - Quantiles: dashed with unique markers and value in legend
-    - Mean: blue solid line with circle markers and PGA value
+    Plots UHS spectra for multiple PoEs in a single figure:
+    - Realizations: dashed gray lines, labeled once per PoE
+    - Quantiles: dashed lines with legend including quantile and PoE
+    - Mean: solid line with legend showing PGA and PoE
+
+    Includes:
+    - One figure with linear X scale
+    - One figure with log X scale
     """
     fig, ax = plt.subplots(figsize=(6, 4))
-    ymax = 0
-    rlz_plotted = False
+    fig_log, ax_log = plt.subplots(figsize=(6, 4))
     lat, lon = None, None
+    ymax = 0
 
-    # --- Realizations ---
-    for f in rlz_files:
-        try:
-            uhs = UHSSpectrum(f)
-            T = uhs.mean.T()
-            Sa = uhs.mean.Sa(poe)
-            ymax = max(ymax, max(Sa))
-            ax.plot(
-                T, Sa,
-                color='lightgray', linestyle='--', linewidth=0.8,
-                label="All realizations" if not rlz_plotted else None
-            )
-            rlz_plotted = True
-        except Exception as e:
-            print(f"[rlz] Skipping {f}: {e}")
+    # --- Para cada PoE ---
+    for p in poe:
+        rlz_plotted = False
 
-    # --- Quantiles ---
-    markers = ['^', '<', '>']
-    for i, f in enumerate(quantile_files):
-        try:
-            uhs = UHSSpectrum(f)
-            T = uhs.mean.T()
-            Sa = uhs.mean.Sa(poe)
-            ymax = max(ymax, max(Sa))
+        # --- Realizaciones ---
+        if rlz_files is not None:
+            for f in rlz_files:
+                try:
+                    uhs = UHSSpectrum(f)
+                    T = uhs.mean.T()
+                    Sa = uhs.mean.Sa(p)
+                    label = f"All realizations (PoE={p})" if not rlz_plotted else None
+                    ax.plot(T, Sa, color="lightgray", linestyle="--", linewidth=0.8, label=label)
+                    ax_log.plot(T, Sa, color="lightgray", linestyle="--", linewidth=0.8, label=label)
+                    ymax = max(ymax, max(Sa))
+                    rlz_plotted = True
+                except Exception as e:
+                    print(f"[rlz] Skipping {f}: {e}")
 
-            base = os.path.basename(f).lower()
-            match = re.search(r"[-_](0\.\d+)", base)
-            if match:
-                quantile_val = float(match.group(1))
-                label = f"Quantile-{quantile_val:.2f} / PGA={Sa[0]:.3f}g"
-            else:
-                label = f"Quantile / PGA={Sa[0]:.3f}g"
+        # --- Cuantiles ---
+        if quantile_files is not None:
+            for f in quantile_files:
+                try:
+                    uhs = UHSSpectrum(f)
+                    T = uhs.mean.T()
+                    Sa = uhs.mean.Sa(p)
 
-            ax.plot(
-                T, Sa,
-                linestyle='--',
-                # marker=markers[i % len(markers)],
-                linewidth=1.2,
-                label=label
-            )
-        except Exception as e:
-            print(f"[quantile] Skipping {f}: {e}")
+                    base = os.path.basename(f).lower()
+                    match = re.search(r"[-_](0\.\d+)", base)
+                    if match:
+                        q = float(match.group(1))
+                        label = f"Quantile-{q:.2f} (PoE={p}) / PGA={Sa[0]:.3f}g"
+                    else:
+                        label = f"Quantile (PoE={p}) / PGA={Sa[0]:.3f}g"
 
-    # --- Mean ---
-    for f in mean_files:
-        try:
-            uhs = UHSSpectrum(f)
-            T = uhs.mean.T()
-            Sa = uhs.mean.Sa(poe)
-            ymax = max(ymax, max(Sa))
-            lat, lon = uhs.latitude, uhs.longitude
-            label = f"Mean / PGA={Sa[0]:.3f}g"
-            ax.plot(
-                T, Sa,
-                color=[0, 0.4470, 0.7410],
-                linewidth=2.0,
-                # marker='o',
-                label=label
-            )
-        except Exception as e:
-            print(f"[mean] Skipping {f}: {e}")
+                    ax.plot(T, Sa, linestyle='--', linewidth=1.2, label=label)
+                    ax_log.plot(T, Sa, linestyle='--', linewidth=1.2, label=label)
+                    ymax = max(ymax, max(Sa))
+                except Exception as e:
+                    print(f"[quantile] Skipping {f}: {e}")
 
-    # --- Formatting ---
+        # --- Medias ---
+        for f in mean_files:
+            try:
+                uhs = UHSSpectrum(f)
+                T = uhs.mean.T()
+                Sa = uhs.mean.Sa(p)
+                lat, lon = uhs.latitude, uhs.longitude
+                label = f"Mean (PoE={p}) / PGA={Sa[0]:.3f}g"
+
+                ax.plot(T, Sa, linewidth=2.0, label=label)
+                ax_log.plot(T, Sa, linewidth=2.0, label=label)
+                ymax = max(ymax, max(Sa))
+            except Exception as e:
+                print(f"[mean] Skipping {f}: {e}")
+
+    # --- Configurar gráfico lineal ---
     ax.set_xlabel("Period [s]", fontweight="bold")
     ax.set_ylabel("Sa [g]", fontweight="bold")
-
-    if title:
-        ax.set_title(title, fontweight="bold")
-    elif lat is not None and lon is not None:
-        ax.set_title(f"UHS at ({lat:.3f}, {lon:.3f}) - PoE = {poe}", fontweight="bold")
-    else:
-        ax.set_title(f"UHS (PoE = {poe})", fontweight="bold")
-        
-
     ax.set_xlim(0, 5)
     ax.set_ylim(0, ymax * 1.1 if ymax > 0 else 1.0)
     ax.grid(True)
     ax.legend()
+
+    if title:
+        ax.set_title(title, fontweight="bold")
+    elif lat is not None and lon is not None:
+        ax.set_title(f"UHS at ({lat:.3f}, {lon:.3f})", fontweight="bold")
+    else:
+        ax.set_title("UHS spectra", fontweight="bold")
+
+    # plt.tight_layout()
+    # plt.show()
+
+    # --- Configurar gráfico logarítmico ---
+    ax_log.set_xlabel("Period [s] (log scale)", fontweight="bold")
+    ax_log.set_ylabel("Sa [g]", fontweight="bold")
+    ax_log.set_xscale("log")
+    ax_log.set_xlim(0.01, 5)
+    ax_log.set_ylim(0, ymax * 1.1 if ymax > 0 else 1.0)
+    ax_log.grid(True, which="both", linestyle="--", alpha=0.5)
+    ax_log.legend()
+
+    if title:
+        ax_log.set_title(f"{title} (log-X)", fontweight="bold")
+    elif lat is not None and lon is not None:
+        ax_log.set_title(f"UHS at ({lat:.3f}, {lon:.3f}) - log scale", fontweight="bold")
+    else:
+        ax_log.set_title("UHS spectra - log scale", fontweight="bold")
+
     plt.tight_layout()
     plt.show()
