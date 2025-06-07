@@ -20,7 +20,7 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
     title : str
         Optional plot title.
     """
-    fig, ax = plt.subplots(figsize=(6, 5))
+    fig, ax = plt.subplots(figsize=(6, 4))
     lat, lon = None, None
     investigation_time = 50
 

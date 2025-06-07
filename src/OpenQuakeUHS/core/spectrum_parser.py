@@ -20,6 +20,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re
 from collections import defaultdict
+import os
 
 class UHSCurves:
     """
@@ -79,7 +80,7 @@ class UHSSpectrum:
         - filepath (str): Path to the UHS CSV file
         """
         self.filepath = filepath
-        self.filename = filepath.split("/")[-1]
+        self.filename = os.path.basename(filepath)
         self.latitude = None
         self.longitude = None
         self.mean = UHSCurves()  # Spectral data grouped by PoE
