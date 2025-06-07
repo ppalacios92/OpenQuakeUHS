@@ -1,0 +1,7 @@
+README.md
+setup.py
+src/OpenQuakeUHS.egg-info/PKG-INFO
+src/OpenQuakeUHS.egg-info/SOURCES.txt
+src/OpenQuakeUHS.egg-info/dependency_links.txt
+src/OpenQuakeUHS.egg-info/requires.txt
+src/OpenQuakeUHS.egg-info/top_level.txt
