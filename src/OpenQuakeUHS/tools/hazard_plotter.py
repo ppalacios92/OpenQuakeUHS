@@ -109,7 +109,7 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
 
             lon = float(df.iloc[2, 0])
             lat = float(df.iloc[2, 1])
-            label = "PGA" if is_pga else f"SA({T:.1f})"
+            label = "PGA" if is_pga else f"SA({T:.2f})"
 
             ax1.plot(sa, poes, '-o' if is_pga else '-', linewidth=1.8 if is_pga else 1.5,
                      color='red' if is_pga else None, label=label)
@@ -168,7 +168,7 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
             sa = df.iloc[1, 3:].astype(str).str.replace("poe-", "", regex=False).astype(float)
             poes = df.iloc[2, 3:].astype(float)
             inv_Tr = calculate_inv_Tr_from_poes(poes, N=investigation_time)
-            label = "PGA" if is_pga else f"SA({T:.1f})"
+            label = "PGA" if is_pga else f"SA({T:.2f})"
 
             ax2.plot(sa, inv_Tr, '-o' if is_pga else '-', linewidth=1.8 if is_pga else 1.5,
                      color='red' if is_pga else None, label=label)
