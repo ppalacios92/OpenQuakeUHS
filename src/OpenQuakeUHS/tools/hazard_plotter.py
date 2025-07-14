@@ -50,7 +50,7 @@ def interpolate_sa_at_reference(y_values, sa_values, ref):
 
 
 
-def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, title=None, reference_value=None):
+def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, title=None, reference_value=None, save_path=None):
     investigation_time = 50
     lat, lon = None, None
     rlz_labeled = False
@@ -115,14 +115,19 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
                      color='red' if is_pga else None, label=label)
 
             if reference_value:
-                sa_ref = interpolate_sa_at_reference(poes, sa, reference_value)
-                print(f"{label}: Sa interpolado para PoE={reference_value:.3f} → {sa_ref:.4f} g")
+                for val in reference_value:
+                    sa_ref = interpolate_sa_at_reference(poes, sa, val)
+                    print(f"{label}: Sa interpolado para PoE={val:.3f} → {sa_ref:.4f} g")
+
 
         except Exception as e:
             print(f"[mean - PoE] Skipping {f}: {e}")
 
     if reference_value:
-        ax1.axhline(reference_value, color='black', linestyle='--', linewidth=1.2)
+        for val in reference_value:
+            inv_tr = int(round(1 / val)) if val > 0 else "-"
+            ax1.axhline(val, color='black', linestyle='--', linewidth=1.2,
+                        label=f"PoE={val:.2f}")
 
     ax1.set_yscale("log")
     ax1.set_xlim(0.01, 2.0)
@@ -130,7 +135,9 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
     ax1.set_xlabel("Spectral Acceleration [g]", fontweight="bold")
     ax1.set_ylabel("PoE in 50y", fontweight="bold")
     ax1.grid(True, which="both", linestyle="--", alpha=0.5)
-    ax1.legend()
+    ax1.legend(loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
+    fig1.subplots_adjust(right=0.75)
+
     ax1.set_title(
         title or f"Mean Hazard Curves at ({lat:.3f}, {lon:.3f})" if lat and lon else "Mean Hazard Curves",
         fontweight="bold"
@@ -143,9 +150,10 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
     rlz_labeled = False
 
     # Convertir PoE de entrada a 1/Tr
-    ref_inv_Tr = None
+    ref_inv_Tr = []
     if reference_value:
-        ref_inv_Tr = calculate_inv_Tr_from_poes([reference_value])[0]
+        ref_inv_Tr = calculate_inv_Tr_from_poes(reference_value, N=investigation_time)
+
 
     print("\n--- Interpolación Sa vs 1/Tr ---")
     for f in mean_files:
@@ -174,14 +182,20 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
                      color='red' if is_pga else None, label=label)
 
             if reference_value:
-                sa_ref = interpolate_sa_at_reference(inv_Tr, sa, ref_inv_Tr)
-                print(f"{label}: Sa interpolado para 1/Tr={ref_inv_Tr:.5f} → {sa_ref:.4f} g")
+                for val, tr_val in zip(reference_value, ref_inv_Tr):
+                    sa_ref = interpolate_sa_at_reference(inv_Tr, sa, tr_val)
+                    print(f"{label}: Sa interpolado para 1/Tr={tr_val:.5f} (PoE={val:.3f}) → {sa_ref:.4f} g")
+
 
         except Exception as e:
             print(f"[mean - inv_Tr] Skipping {f}: {e}")
 
     if reference_value:
-        ax2.axhline(ref_inv_Tr, color='black', linestyle='--', linewidth=1.2)
+        for val, tr_val in zip(reference_value, ref_inv_Tr):
+            inv_tr_str = f"{int(round(1 / val))}" if val > 0 else "-"
+            ax2.axhline(tr_val, color='black', linestyle='--', linewidth=1.2,
+                        label=f"Tr={1/tr_val:.0f}y")
+
 
     ax2.set_yscale("log")
     ax2.set_xlim(0.01, 2.0)
@@ -189,10 +203,23 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
     ax2.set_xlabel("Spectral Acceleration [g]", fontweight="bold")
     ax2.set_ylabel("Annual Rate Excedence", fontweight="bold")
     ax2.grid(True, which="both", linestyle="--", alpha=0.5)
-    ax2.legend()
+    ax2.legend(loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
+    fig2.subplots_adjust(right=0.75)
+
     ax2.set_title(
         title or f"Mean Hazard Curves at ({lat:.3f}, {lon:.3f})" if lat and lon else "Mean Hazard Curves",
         fontweight="bold"
     )
     plt.tight_layout()
-    plt.show()
+
+
+    if save_path:
+        fig1.savefig(f"{save_path}_hazardcurves_PoE.svg", format="svg", bbox_inches="tight")
+        fig1.savefig(f"{save_path}_hazardCurves_PoE.pdf", format="pdf", bbox_inches="tight")
+
+        fig2.savefig(f"{save_path}_hazardcurves_AnualExcedence.svg", format="svg", bbox_inches="tight")
+        fig2.savefig(f"{save_path}_hazardcurves_AnualExcedence.pdf", format="pdf", bbox_inches="tight")
+        print(f"Figures saved to {save_path}_linear.(svg/pdf) and {save_path}_log.(svg/pdf)")
+
+    else:
+        plt.show()

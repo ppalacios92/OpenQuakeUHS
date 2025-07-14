@@ -3,7 +3,7 @@ import os
 import re
 from OpenQuakeUHS.core.spectrum_parser import UHSSpectrum
 
-def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], title=None):
+def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], title=None , save_path=None):
     """
     Plots UHS spectra for multiple PoEs in a single figure:
     - Realizations: dashed gray lines, labeled once per PoE
@@ -19,7 +19,6 @@ def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], 
     lat, lon = None, None
     ymax = 0
 
-    # --- Para cada PoE ---
     for p in poe:
         rlz_plotted = False
 
@@ -81,7 +80,6 @@ def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], 
     ax.set_xlim(0, 5)
     ax.set_ylim(0, ymax * 1.1 if ymax > 0 else 1.0)
     ax.grid(True)
-    ax.legend()
 
     if title:
         ax.set_title(title, fontweight="bold")
@@ -90,8 +88,8 @@ def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], 
     else:
         ax.set_title("UHS spectra", fontweight="bold")
 
-    # plt.tight_layout()
-    # plt.show()
+    # Leyenda fuera del gráfico lineal
+    ax.legend(loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=8)
 
     # --- Configurar gráfico logarítmico ---
     ax_log.set_xlabel("Period [s] (log scale)", fontweight="bold")
@@ -100,7 +98,6 @@ def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], 
     ax_log.set_xlim(0.01, 5)
     ax_log.set_ylim(0, ymax * 1.1 if ymax > 0 else 1.0)
     ax_log.grid(True, which="both", linestyle="--", alpha=0.5)
-    ax_log.legend()
 
     if title:
         ax_log.set_title(f"{title} (log-X)", fontweight="bold")
@@ -109,5 +106,20 @@ def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], 
     else:
         ax_log.set_title("UHS spectra - log scale", fontweight="bold")
 
-    plt.tight_layout()
-    plt.show()
+    # Leyenda fuera del gráfico log-X
+    ax_log.legend(loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=8)
+
+    fig.subplots_adjust(right=0.75)
+    fig_log.subplots_adjust(right=0.75)
+
+    # plt.show()
+    # --- Guardar si se especifica save_path ---
+    if save_path:
+        fig.savefig(f"{save_path}_linear.svg", format="svg", bbox_inches="tight")
+        fig.savefig(f"{save_path}_linear.pdf", format="pdf", bbox_inches="tight")
+        fig_log.savefig(f"{save_path}_log.svg", format="svg", bbox_inches="tight")
+        fig_log.savefig(f"{save_path}_log.pdf", format="pdf", bbox_inches="tight")
+        print(f"Figures saved to {save_path}_linear.(svg/pdf) and {save_path}_log.(svg/pdf)")
+
+    else:
+        plt.show()
