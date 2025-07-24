@@ -43,7 +43,7 @@ pip install -e .
 ---
 
 ## 📁 Repository Structure
-
+```bash
 OpenQuakeUHS/
 ├── core/ # Core logic for data loading and disaggregation handling
 ├── tools/ # Plotting and post-processing utilities
@@ -51,7 +51,7 @@ OpenQuakeUHS/
 ├── config/ # Optional color/style configuration files
 ├── tests/ # Unit tests for data extraction and plotting
 └── README.md # Project documentation
-
+```
 ---
 
 ## 🛑 Disclaimer
