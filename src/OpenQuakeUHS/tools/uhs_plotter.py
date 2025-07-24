@@ -3,7 +3,7 @@ import os
 import re
 from OpenQuakeUHS.core.spectrum_parser import UHSSpectrum
 
-def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], title=None , save_path=None):
+def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], PRY_name='PRY', title=None , save_path=None):
     """
     Plots UHS spectra for multiple PoEs in a single figure:
     - Realizations: dashed gray lines, labeled once per PoE
@@ -15,9 +15,25 @@ def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], 
     - One figure with log X scale
     """
     fig, ax = plt.subplots(figsize=(6, 4))
+    
     fig_log, ax_log = plt.subplots(figsize=(6, 4))
     lat, lon = None, None
     ymax = 0
+
+    fig.text(
+        0.99, -0.01,
+        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B. - Torrefuerte",
+        ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
+    )
+
+    fig_log.text(
+        0.99, -0.01,
+        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B. - Torrefuerte",
+        ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
+    )
+
+
+
 
     for p in poe:
         rlz_plotted = False
@@ -111,6 +127,9 @@ def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], 
 
     fig.subplots_adjust(right=0.75)
     fig_log.subplots_adjust(right=0.75)
+
+
+
 
     # plt.show()
     # --- Guardar si se especifica save_path ---

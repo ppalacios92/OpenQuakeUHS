@@ -50,14 +50,18 @@ def interpolate_sa_at_reference(y_values, sa_values, ref):
 
 
 
-def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, title=None, reference_value=None, save_path=None):
+def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, title=None, reference_value=None, save_path=None , PRY_name='PRY'):
     investigation_time = 50
     lat, lon = None, None
     rlz_labeled = False
 
     # ----------------- FIGURA 1: Sa vs PoE -----------------
     fig1, ax1 = plt.subplots(figsize=(6, 4))
-
+    fig1.text(
+        0.99, -0.01,
+        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B. - Torrefuerte",
+        ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
+    )
     if rlz_files:
         for f in rlz_files:
             try:
@@ -147,6 +151,12 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
 
     # ----------------- FIGURA 2: Sa vs 1/Tr -----------------
     fig2, ax2 = plt.subplots(figsize=(6, 4))
+    fig2.text(
+        0.99, -0.01,
+        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B. - Torrefuerte",
+        ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
+    )
+
     rlz_labeled = False
 
     # Convertir PoE de entrada a 1/Tr
