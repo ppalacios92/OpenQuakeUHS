@@ -2,6 +2,8 @@
 
 A Python-based toolkit for processing **Uniform Hazard Spectra (UHS)** and **seismic hazard disaggregation** results from OpenQuake outputs. This package is designed for structural engineers, researchers, and seismic modelers aiming to automate the interpretation and visualization of OpenQuake results using Python.
 
+![Disaggregation SVG](src/OpenQuakeUHS/examples/DISS_disaggregation.svg)
+
 ---
 
 ## ⚙️ Features
