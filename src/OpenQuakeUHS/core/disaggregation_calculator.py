@@ -172,7 +172,7 @@ class Disaggregation:
 
         ax1.set_title(
             f'Disaggregation Plot by Epsilon\n'
-            f'Mod: Mw={mod_mag:.2f}, R={mod_dist:.0f} km | '
+            # f'Mod: Mw={mod_mag:.2f}, R={mod_dist:.0f} km | '
             f'Mean: Mw={mean_mag:.2f}, R={mean_dist:.0f} km',
             fontweight='bold'
         )
@@ -266,7 +266,7 @@ class Disaggregation:
 
         fig.text(
             0.99, -0.01,
-            f"PRY: {self.PRY}\n© 2025 - Patricio Palacios B. - Torrefuerte",
+            f"PRY: {self.PRY}\n© 2025 - Patricio Palacios B.",
             ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
         )
 

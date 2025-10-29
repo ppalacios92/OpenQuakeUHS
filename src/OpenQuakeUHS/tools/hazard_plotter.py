@@ -59,7 +59,7 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
     fig1, ax1 = plt.subplots(figsize=(6, 4))
     fig1.text(
         0.99, -0.01,
-        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B. - Torrefuerte",
+        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B.",
         ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
     )
     if rlz_files:
@@ -153,7 +153,7 @@ def plot_mean_and_rlz_hazard_curves(mean_files, rlz_files=None, periods=None, ti
     fig2, ax2 = plt.subplots(figsize=(6, 4))
     fig2.text(
         0.99, -0.01,
-        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B. - Torrefuerte",
+        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B.",
         ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
     )
 

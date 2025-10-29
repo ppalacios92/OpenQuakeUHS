@@ -22,13 +22,13 @@ def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], 
 
     fig.text(
         0.99, -0.01,
-        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B. - Torrefuerte",
+        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B.",
         ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
     )
 
     fig_log.text(
         0.99, -0.01,
-        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B. - Torrefuerte",
+        f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B.",
         ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
     )
 
