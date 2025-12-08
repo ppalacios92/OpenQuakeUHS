@@ -32,27 +32,24 @@ def plot_uhs_sets(mean_files, quantile_files=None, rlz_files=None, poe=[0.687], 
         ha='right', va='top', fontsize=9, color='gray', style='italic', multialignment='right'
     )
 
-
-
-
-    for p in poe:
-        rlz_plotted = False
-
-        # --- Realizaciones ---
-        if rlz_files is not None:
-            for f in rlz_files:
-                try:
-                    uhs = UHSSpectrum(f)
-                    T = uhs.mean.T()
+    # --- Realizaciones ---
+    rlz_plotted = False
+    if rlz_files is not None:
+        for f in rlz_files:
+            try:
+                uhs = UHSSpectrum(f)
+                T = uhs.mean.T()
+                for p in poe:
                     Sa = uhs.mean.Sa(p)
                     label = f"All realizations (PoE={p})" if not rlz_plotted else None
-                    ax.plot(T, Sa, color="lightgray", linestyle="--", linewidth=0.8, label=label)
-                    ax_log.plot(T, Sa, color="lightgray", linestyle="--", linewidth=0.8, label=label)
+                    ax.plot(T, Sa, color="lightgray", linestyle="--", linewidth=0.8, label=label, zorder=1)
+                    ax_log.plot(T, Sa, color="lightgray", linestyle="--", linewidth=0.8, label=label, zorder=1)
                     ymax = max(ymax, max(Sa))
                     rlz_plotted = True
-                except Exception as e:
-                    print(f"[rlz] Skipping {f}: {e}")
+            except Exception as e:
+                print(f"[rlz] Skipping {f}: {e}")
 
+    for p in poe:      
         # --- Cuantiles ---
         if quantile_files is not None:
             for f in quantile_files:
