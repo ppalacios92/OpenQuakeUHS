@@ -82,8 +82,12 @@ class PSHA_HDF5:
             hcs_meta = json.loads(f["hcurves-stats"].attrs["json"])
 
             # logic tree
-            sm_data   = f["full_lt/sm_data"][:]
-            self.n_sm = len(sm_data)
+            try:
+                sm_data   = f["full_lt/sm_data"][:]
+                self.n_sm = len(sm_data)
+            except Exception:
+                self.n_sm = f["full_lt"].attrs.get("num_samples", 0)
+    
             trt_raw   = f["full_lt"].attrs.get("trts", [])
             self.trts = list(trt_raw) if not isinstance(trt_raw, str) else json.loads(trt_raw)
 
@@ -168,18 +172,31 @@ class PSHA_HDF5:
     def plot_uhs_sets(self, 
                         poe, PRY_name="PRY", 
                         title=None,
-                        show_rlzs=False,
+                        show_rlzs=False, quantiles="all",
                         save_path=None):
         """
-        Plot UHS sets (mean + quantiles + rlzs) for the given PoEs.
+        Plot UHS sets (mean + quantiles + optional rlzs) for the given PoEs.
 
         Parameters:
         -----------
         poe       : list of float
+            Probabilities of exceedance to plot (e.g. [0.5, 0.2, 0.1, 0.02]).
         PRY_name  : str
+            Project name shown in the figure watermark.
         title     : str or None
-        save_path : str or None  — base path without extension
+            Custom figure title. Defaults to site coordinates.
+        show_rlzs : bool
+            If True, plot all individual realizations as thin gray dashed lines.
+        quantiles : str, list of str, or None
+            Controls which quantile curves to plot.
+            - 'all'            : plot all available quantiles (default)
+            - ['q16', 'q84']   : plot only the specified quantiles
+            - None             : do not plot any quantiles
+        save_path : str or None
+            Base path without extension. If provided, saves four files:
+            {save_path}_linear.svg/.pdf and {save_path}_log.svg/.pdf
         """
+
         tag = "[PSHA_HDF5]"
         q_stats = [s for s in self.stats if s.startswith("quantile")]
         print(f"{tag} plot_uhs_sets | PoEs: {poe} | stats: mean + "
@@ -195,6 +212,10 @@ class PSHA_HDF5:
                          f"PRY: {PRY_name}\n© 2025 - Patricio Palacios B.",
                          ha="right", va="top", fontsize=9,
                          color="gray", style="italic", multialignment="right")
+
+        # color palette — one color per PoE
+        prop_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        poe_colors = {p: prop_cycle[i % len(prop_cycle)] for i, p in enumerate(poe)}
 
         # realizations
         rlz_plotted = False
@@ -214,15 +235,21 @@ class PSHA_HDF5:
 
 
         # quantiles
-        for stat in q_stats:
-            d = self._get_uhs_obj(stat=stat)
-            T = self._periods_from_data(d)
-            for p in poe:
-                Sa = self._sa_from_data(d, p, T)
-                lbl = f"{stat} (PoE={p}) / PGA={Sa[0]:.3f}g"
-                ax.plot(T, Sa, linestyle="--", linewidth=1.2, label=lbl)
-                ax_log.plot(T, Sa, linestyle="--", linewidth=1.2, label=lbl)
-                ymax = max(ymax, max(Sa))
+        if quantiles is not None:
+            for stat in q_stats:
+                lbl_key = self._quantile_label(stat)
+                if quantiles != "all" and lbl_key not in quantiles:
+                    continue
+                d = self._get_uhs_obj(stat=stat)
+                T = self._periods_from_data(d)
+                for p in poe:
+                    Sa = self._sa_from_data(d, p, T)
+                    lbl = f"{lbl_key} (PoE={p}) / PGA={Sa[0]:.3f}g"
+                    ax.plot(T, Sa, linestyle="--", linewidth=1.2, label=lbl,
+                            color=poe_colors[p], alpha=0.5)
+                    ax_log.plot(T, Sa, linestyle="--", linewidth=1.2, label=lbl,
+                                color=poe_colors[p], alpha=0.5)
+                    ymax = max(ymax, max(Sa))
 
         # mean
         d_mean = self._get_uhs_obj(stat="mean")
@@ -230,11 +257,11 @@ class PSHA_HDF5:
         for p in poe:
             Sa = self._sa_from_data(d_mean, p, T_mean)
             lbl = f"Mean (PoE={p}) / PGA={Sa[0]:.3f}g"
-            ax.plot(T_mean, Sa, linewidth=2.0, label=lbl)
-            ax_log.plot(T_mean, Sa, linewidth=2.0, label=lbl)
+            ax.plot(T_mean, Sa, linewidth=2.0, label=lbl, color=poe_colors[p])
+            ax_log.plot(T_mean, Sa, linewidth=2.0, label=lbl, color=poe_colors[p])
             ymax = max(ymax, max(Sa))
 
-        site_title = title or f"UHS at ({self.latitude:.3f}, {self.longitude:.3f})"
+        site_title = title or f"UHS at ({self.latitude:.3f}, {self.longitude:.3f}) | vs30={self.vs30:.0f} m/s"
 
         for ax_obj, log in ((ax, False), (ax_log, True)):
             ax_obj.set_xlabel("Period [s]" + (" (log scale)" if log else ""),
@@ -312,8 +339,63 @@ class PSHA_HDF5:
 
         return results if isinstance(poe, list) else results[poes[0]]
 
-    def plot_hazard_curves(self, periods, reference_value=None,
-                           title=None, PRY_name="PRY", save_path=None):
+        
+    def generate_uhs_peer(self, poe, stat="mean", PRY_name="PRY", save_path=None):
+        """
+        Export UHS in PEER ground motion database format.
+
+        Parameters:
+        -----------
+        poe       : float or list of float
+        stat      : str or list of str  — 'mean', 'q16', 'q50', 'q84'
+        PRY_name  : str
+        save_path : str or None
+        """
+        tag     = "[PSHA_HDF5]"
+        poes    = poe  if isinstance(poe,  list) else [poe]
+        stats_r = stat if isinstance(stat, list) else [stat]
+
+        # map short label -> internal stat string
+        label_to_stat = {"mean": "mean"}
+        label_to_stat.update({
+            self._quantile_label(s): s
+            for s in self.stats if s.startswith("quantile")
+        })
+
+        print(f"{tag} generate_uhs_peer | PoEs: {poes} | stats: {stats_r}")
+
+        for p in poes:
+            for lbl in stats_r:
+                if lbl not in label_to_stat:
+                    print(f"{tag} WARNING: stat '{lbl}' not found, skipping")
+                    continue
+
+                d  = self._get_uhs_obj(stat=label_to_stat[lbl])
+                T  = self._periods_from_data(d)
+                Sa = self._sa_from_data(d, p, T)
+
+                poe_str = f"{p:.2f}".replace(".", "")
+                title   = f"UHS_{lbl}_POE_{poe_str}_{PRY_name}"
+
+                rows = [
+                    [title, ""],
+                    ["", ""],
+                    ["T (s)", "Sa (g)"],
+                ] + [[t, s] for t, s in zip(T, Sa)]
+
+                df = pd.DataFrame(rows)
+
+                if save_path:
+                    os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else ".", exist_ok=True)
+                    csv_name = f"{save_path}_PEER_{title}.csv"
+                    df.to_csv(csv_name, index=False, header=False)
+                    print(f"{tag} PEER file saved: {os.path.basename(csv_name)}")
+
+
+    def plot_hazard_curves(self, 
+                            periods, reference_value=None,
+                            title=None, 
+                            PRY_name="PRY", save_path=None):
         """
         Plot mean hazard curves (Sa vs PoE and Sa vs annual exceedance rate)
         for the requested periods.
@@ -387,7 +469,7 @@ class PSHA_HDF5:
                 ax2.axhline(tr_val, color="black", linestyle="--",
                             linewidth=1.2, label=f"Tr={1/tr_val:.0f}y")
 
-        site_title = title or f"Mean Hazard Curves at ({self.latitude:.3f}, {self.longitude:.3f})"
+        site_title = title or f"Mean Hazard Curves at ({self.latitude:.2f}, {self.longitude:.2f}) | vs30={self.vs30:.0f} m/s"
 
         for ax_obj, ylabel, ylim in (
             (ax1, "PoE in 50y",            (1e-4, 1.0)),

@@ -229,23 +229,54 @@ class Disaggregation_HDF5:
                 target_poe,
                 target_imt, 
                 PRY_name="PRY", 
+                lon_axis=None, lat_axis=None,
                 save_path=None):
         """
-        Plot the three disaggregation subplots for the given PoE(s) and IMT.
+        Compute and plot the three disaggregation subplots for a single PoE and IMT.
 
         Parameters:
         -----------
-        target_poe : float or list of float
+        target_poe : float
+            Probability of exceedance to plot.
         target_imt : str
+            Intensity measure type (e.g. 'SA(0.5)').
         PRY_name   : str
-        save_path  : str or None  — base path without extension
+            Project name shown in the figure watermark.
+        save_path  : str or None
+            Base path without extension. If provided, saves SVG and PDF.
+            Output filename: {save_path}_POE_{poe_str}_disaggregation.svg/.pdf
+        lon_axis   : list of two floats or None
+            Longitude axis limits for the Lon/Lat subplot (e.g. [4, 10]).
+        lat_axis   : list of two floats or None
+            Latitude axis limits for the Lon/Lat subplot (e.g. [46, 50]).
         """
         poes = target_poe if isinstance(target_poe, list) else [target_poe]
         for p in poes:
-            self._plot_single(p, target_imt, PRY_name, save_path)
+            self._plot_single(p, target_imt, PRY_name, lon_axis, lat_axis , save_path)
 
 
-    def _plot_single(self, target_poe, target_imt, PRY_name, save_path):
+    def _plot_single(self, target_poe, target_imt, PRY_name, 
+                    lon_axis, lat_axis,
+                    save_path):
+        """
+        Compute and plot the three disaggregation subplots for a single PoE and IMT.
+
+        Parameters:
+        -----------
+        target_poe : float
+            Probability of exceedance to plot.
+        target_imt : str
+            Intensity measure type (e.g. 'SA(0.5)').
+        PRY_name   : str
+            Project name shown in the figure watermark.
+        save_path  : str or None
+            Base path without extension. If provided, saves SVG and PDF.
+            Output filename: {save_path}_POE_{poe_str}_disaggregation.svg/.pdf
+        lon_axis   : list of two floats or None
+            Longitude axis limits for the Lon/Lat subplot (e.g. [4, 10]).
+        lat_axis   : list of two floats or None
+            Latitude axis limits for the Lon/Lat subplot (e.g. [46, 50]).
+        """
         tag = "[Disaggregation_HDF5]"
         self._validate(target_poe, target_imt)
         print(f"{tag} plot | target_poe={target_poe} | target_imt={target_imt}")
@@ -300,11 +331,25 @@ class Disaggregation_HDF5:
 
         # subplot 3: Lon-Lat
         ax3 = fig.add_subplot(1, 3, 3, projection="3d")
-        dz = data_lonlat["hz_cont_lon_lat"] * 100
+
+        # filter by axis limits before plotting
+        data_lonlat_plot = data_lonlat.copy()
+        if lon_axis is not None:
+            data_lonlat_plot = data_lonlat_plot[
+                (data_lonlat_plot["lon"] >= lon_axis[0]) &
+                (data_lonlat_plot["lon"] <= lon_axis[1])
+            ]
+        if lat_axis is not None:
+            data_lonlat_plot = data_lonlat_plot[
+                (data_lonlat_plot["lat"] >= lat_axis[0]) &
+                (data_lonlat_plot["lat"] <= lat_axis[1])
+            ]
+
+        dz = data_lonlat_plot["hz_cont_lon_lat"] * 100
         ax3.bar3d(
-            x=data_lonlat["lon"], y=data_lonlat["lat"],
+            x=data_lonlat_plot["lon"], y=data_lonlat_plot["lat"],
             z=np.zeros_like(dz), dx=0.2, dy=0.2, dz=dz,
-            color=data_lonlat["color_TRT"], shade=True, alpha=0.8,
+            color=data_lonlat_plot["color_TRT"], shade=True, alpha=0.8,
         )
 
         if self.shp_path:
@@ -326,6 +371,11 @@ class Disaggregation_HDF5:
         ax3.set_ylabel("Latitude", fontweight="bold")
         ax3.set_zlabel("Hazard Contribution (%)", fontweight="bold")
         ax3.set_title("Hazard Contribution by Location", fontweight="bold")
+        if lon_axis is not None:
+            ax3.set_xlim(lon_axis[0], lon_axis[1])
+        if lat_axis is not None:
+            ax3.set_ylim(lat_axis[0], lat_axis[1])
+            
 
         handles_eps = [mpatches.Patch(color=clrs[i], label=str(eps_vals[i]))
                        for i in range(len(eps_vals))]
