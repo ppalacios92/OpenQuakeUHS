@@ -292,7 +292,31 @@ class PSHA_HDF5:
                   f"_linear.pdf / _log.svg / _log.pdf")
         plt.show()
 
+
+        # build return dataframe
+        records = []
+        d_mean = self._get_uhs_obj(stat="mean")
+        T_mean = self._periods_from_data(d_mean)
+
+        for p in poe:
+            for T_val in T_mean:
+                row = {"poe": p, "T": T_val,
+                       "mean": self._get_uhs_obj(stat="mean")[p][T_val]}
+                if quantiles is not None:
+                    for stat in q_stats:
+                        lbl_key = self._quantile_label(stat)
+                        if quantiles != "all" and lbl_key not in quantiles:
+                            continue
+                        row[lbl_key] = self._get_uhs_obj(stat=stat)[p][T_val]
+                records.append(row)
+
+        df_out = pd.DataFrame(records)
+
+        plt.show()
         plt.close("all")
+
+        return df_out
+
 
     def generate_uhs_table(self, poe, PRY_name="PRY", save_path=None):
         """
@@ -485,6 +509,29 @@ class PSHA_HDF5:
             ax_obj.set_title(site_title, fontweight="bold")
             ax_obj.figure.subplots_adjust(right=0.75)
 
+        # build return dataframe
+        records = []
+        for imt_str in self.imts:
+            period = self._imt_to_period(imt_str)
+            if np.isnan(period):
+                continue
+            if period not in periods and (period != 0.01 or 0.01 not in periods):
+                continue
+            imt_idx   = self._imt_idx[imt_str]
+            sa_values = np.array(self.imtls[imt_str])
+            poe_vals  = self._hcurves_stats[0, stat_idx, imt_idx, :]
+            inv_Tr    = calculate_inv_Tr_from_poes(poe_vals, N=N)
+            for sa, poe_v, inv_tr_v in zip(sa_values, poe_vals, inv_Tr):
+                records.append({
+                    "imt":    imt_str,
+                    "period": period,
+                    "Sa":     float(sa),
+                    "poe":    float(poe_v),
+                    "inv_Tr": float(inv_tr_v),
+                })
+
+        df_out = pd.DataFrame(records)
+
         if save_path:
             os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else ".", exist_ok=True)
             fig1.savefig(f"{save_path}_hazardcurves_PoE.svg",            format="svg", bbox_inches="tight")
@@ -497,11 +544,13 @@ class PSHA_HDF5:
             plt.show()
 
         plt.close("all")
+        return df_out
 
     # def plot_location_map(self):
     #     """Return a folium map with the site location."""
     #     print(f"[PSHA_HDF5] plot_location_map | lat={self.latitude:.4f}, lon={self.longitude:.4f}")
     #     return plot_uhs_location_map(lat=self.latitude, lon=self.longitude)
+
     def plot_location_map(self):
         import folium
         """Return a folium map with the site location."""
