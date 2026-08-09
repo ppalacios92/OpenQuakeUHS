@@ -30,21 +30,58 @@ class PSHA_HDF5:
     """
     Object-oriented interface to an OpenQuake psha.hdf5 file.
 
+    Works with both a single-site datastore and a multi-site one: the site of interest is
+    chosen at load time and every array is sliced down to it, so all methods below operate on
+    one site regardless of how many the file contains.
+
     Parameters:
     -----------
     hdf5_path : str
         Path to the psha.hdf5 file.
+    site : tuple, int or None
+        Which site to read.
+        - None       : first site in the file (the historical behaviour).
+        - (lon, lat) : the site closest to that coordinate.
+        - int        : that site index directly.
+
+        Selecting by coordinate is the safe option on a multi-site run, because OpenQuake
+        REORDERS the sites internally: the position a site has in the job.ini `sites` list is
+        not the position it has in the datastore. Never assume the input order survives.
+
+    Examples:
+    ---------
+    >>> psha = PSHA_HDF5('psha.hdf5', site=(-78.4851, -0.1753))   # Quito
+    >>> psha.plot_uhs_sets(poe=[0.5, 0.2, 0.1, 0.02], show_rlzs=True)
     """
 
-    def __init__(self, hdf5_path):
+    def __init__(self, hdf5_path, site=None):
         self.hdf5_path = hdf5_path
-        self._load()
+        self._load(site)
 
     # -------------------------------------------------------------------------
     # Loading
     # -------------------------------------------------------------------------
 
-    def _load(self):
+    @staticmethod
+    def _resolve_site(lons, lats, site):
+        """Return (index, distance_in_degrees) of the requested site.
+
+        The distance is reported so the caller can tell a hit from a near miss: asking for a
+        city and silently getting the one 80 km away is the failure mode this guards against.
+        """
+        if site is None:
+            return 0, 0.0
+        if isinstance(site, (int, np.integer)):
+            if not 0 <= site < len(lons):
+                raise IndexError(f"site index {site} out of range, file has {len(lons)} sites")
+            return int(site), 0.0
+
+        lon, lat = site
+        d = np.hypot(lons - lon, lats - lat)
+        i = int(np.argmin(d))
+        return i, float(d[i])
+
+    def _load(self, site=None):
         tag = "[PSHA_HDF5]"
         print(f"{tag} Loading: {os.path.basename(self.hdf5_path)}")
 
@@ -62,11 +99,17 @@ class PSHA_HDF5:
             self.investigation_time = float(oqp.get("investigation_time", 50.0))
             self.imtls             = oqp["hazard_imtls"]   # {imt: [iml, ...]}
 
-            # site
-            self.longitude = float(f["sitecol/lon"][0])
-            self.latitude  = float(f["sitecol/lat"][0])
-            self.depth     = float(f["sitecol/depth"][0])
-            self.vs30      = float(f["sitecol/vs30"][0])
+            # site: resolve which one to read, then keep only that one
+            lons = f["sitecol/lon"][:]
+            lats = f["sitecol/lat"][:]
+            self.n_sites = len(lons)
+            i, self.site_distance = self._resolve_site(lons, lats, site)
+            self.site_index = i
+
+            self.longitude = float(lons[i])
+            self.latitude  = float(lats[i])
+            self.depth     = float(f["sitecol/depth"][i])
+            self.vs30      = float(f["sitecol/vs30"][i])
 
             # hmaps-stats meta
             ms_meta   = json.loads(f["hmaps-stats"].attrs["json"])
@@ -94,14 +137,14 @@ class PSHA_HDF5:
             # weights
             self.weights = f["weights"][:]
 
-            # load arrays — metadata only here, arrays on demand except hmaps
-            # hmaps are small (1,4,19,5) and (1,54,19,5) — load fully
-            self._hmaps_stats = f["hmaps-stats"][:]   # (1, n_stats, n_imts, n_poes)
-            self._hmaps_rlzs  = f["hmaps-rlzs"][:]   # (1, n_rlzs,  n_imts, n_poes)
+            # Arrays are sliced to the selected site with i:i+1, which KEEPS the leading axis
+            # at length 1. Every method below therefore indexes [0, ...] exactly as it did when
+            # the file could only hold one site, and none of them needed changing.
+            self._hmaps_stats = f["hmaps-stats"][i:i + 1]   # (1, n_stats, n_imts, n_poes)
+            self._hmaps_rlzs  = f["hmaps-rlzs"][i:i + 1]    # (1, n_rlzs,  n_imts, n_poes)
 
-            # hcurves — larger, load fully (1,4,19,20) and (1,54,19,20)
-            self._hcurves_stats = f["hcurves-stats"][:]
-            self._hcurves_rlzs  = f["hcurves-rlzs"][:]
+            self._hcurves_stats = f["hcurves-stats"][i:i + 1]
+            self._hcurves_rlzs  = f["hcurves-rlzs"][i:i + 1]
 
         # derived
         self._stat_idx  = {s: i for i, s in enumerate(self.stats)}
@@ -113,6 +156,13 @@ class PSHA_HDF5:
         print(f"{tag} Description       : {self.description}")
         print(f"{tag} Site              : lat={self.latitude:.4f}, lon={self.longitude:.4f}, "
               f"vs30={self.vs30:.1f} m/s, depth={self.depth:.1f} km")
+        if self.n_sites > 1:
+            print(f"{tag} Site selection    : index {self.site_index} of {self.n_sites}"
+                  + (f", {self.site_distance:.4f} deg from the requested coordinate"
+                     if site is not None and not isinstance(site, (int, np.integer)) else ""))
+            if site is None:
+                print(f"{tag} WARNING: this file holds {self.n_sites} sites and none was "
+                      f"requested, so the first one was taken. Pass site=(lon, lat) to choose.")
         print(f"{tag} Investigation time: {self.investigation_time:.0f} years")
         print(f"{tag} IMTs ({len(self.imts):2d})         : {', '.join(self.imts)}")
         print(f"{tag} PoEs ({len(self.poes):2d})          : {', '.join(str(p) for p in self.poes)}")
