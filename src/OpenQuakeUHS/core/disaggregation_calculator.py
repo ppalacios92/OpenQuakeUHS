@@ -4,7 +4,12 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib import cm
 import os
-import geopandas as gpd
+
+# geopandas is imported lazily inside read_shp_map, the only place that uses it. At module
+# level it made `import OpenQuakeUHS` fail outright on any machine without geopandas, taking
+# PSHA_HDF5 and the whole UHS side down with it -- and setup.py only declares pandas and
+# matplotlib, so that machine is the expected one. Same pattern as disaggregation_hdf5.py.
+
 
 class Disaggregation:
 
@@ -134,6 +139,7 @@ class Disaggregation:
 
     def read_shp_map(self):
         # === Leer y reproyectar shapefile a EPSG:4326 ===
+        import geopandas as gpd
         gdf_ecuador = gpd.read_file(self.shp_path_ecuador)
         gdf_ecuador = gdf_ecuador.to_crs(epsg=4326)
         return gdf_ecuador
