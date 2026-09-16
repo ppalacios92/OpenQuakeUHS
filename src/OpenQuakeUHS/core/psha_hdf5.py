@@ -117,9 +117,18 @@ class PSHA_HDF5:
             self.stats = ms_meta["stat"]
             self.poes  = ms_meta["poe"]
 
-            # hmaps-rlzs meta
-            mr_meta      = json.loads(f["hmaps-rlzs"].attrs["json"])
-            self.n_rlzs  = mr_meta["rlz_id"]
+            # hmaps-rlzs meta. A job that does not set `individual_rlzs = true` stores only
+            # the statistics: the engine still enumerates every realization, it just collapses
+            # them to the mean and never writes a per-realization dataset. That is the default,
+            # so these two datasets are absent from most runs. Everything driven by the mean --
+            # plot_hazard_curves, and plot_uhs_sets with show_rlzs=False -- works on such a
+            # file, so a missing rlz axis is recorded and reported, never raised.
+            self.has_rlzs = "hmaps-rlzs" in f
+            if self.has_rlzs:
+                mr_meta      = json.loads(f["hmaps-rlzs"].attrs["json"])
+                self.n_rlzs  = mr_meta["rlz_id"]
+            else:
+                self.n_rlzs  = 0
 
             # hcurves-stats meta
             hcs_meta = json.loads(f["hcurves-stats"].attrs["json"])
@@ -141,10 +150,13 @@ class PSHA_HDF5:
             # at length 1. Every method below therefore indexes [0, ...] exactly as it did when
             # the file could only hold one site, and none of them needed changing.
             self._hmaps_stats = f["hmaps-stats"][i:i + 1]   # (1, n_stats, n_imts, n_poes)
-            self._hmaps_rlzs  = f["hmaps-rlzs"][i:i + 1]    # (1, n_rlzs,  n_imts, n_poes)
-
             self._hcurves_stats = f["hcurves-stats"][i:i + 1]
-            self._hcurves_rlzs  = f["hcurves-rlzs"][i:i + 1]
+
+            # None, not an empty array: anything that needs them must fail loudly rather than
+            # silently plot nothing. See has_rlzs above.
+            self._hmaps_rlzs = f["hmaps-rlzs"][i:i + 1] if self.has_rlzs else None
+            self._hcurves_rlzs = (f["hcurves-rlzs"][i:i + 1]
+                                  if "hcurves-rlzs" in f else None)
 
         # derived
         self._stat_idx  = {s: i for i, s in enumerate(self.stats)}
@@ -168,7 +180,11 @@ class PSHA_HDF5:
         print(f"{tag} PoEs ({len(self.poes):2d})          : {', '.join(str(p) for p in self.poes)}")
         print(f"{tag} IML levels/IMT   : {self._hcurves_stats.shape[3]}")
         print(f"{tag} Stats             : {', '.join(self.stats)}")
-        print(f"{tag} Realizations      : {self.n_rlzs}")
+        print(f"{tag} Realizations      : "
+              + (f"{self.n_rlzs}" if self.has_rlzs else
+                 "not stored (individual_rlzs was not set)"
+                 + (f"; {len(self.weights)} paths were run and collapsed to the statistics "
+                    f"above" if len(self.weights) > 1 else "")))
         print(f"{tag} Logic tree paths  : {self.n_sm} source models x {len(self.trts)} TRTs")
         print(f"{tag} TRTs              : {', '.join(self.trts)}")
         print(f"{tag} Ready.")
@@ -248,6 +264,13 @@ class PSHA_HDF5:
         """
 
         tag = "[PSHA_HDF5]"
+        if show_rlzs and not self.has_rlzs:
+            # looping over zero realizations would draw nothing and say nothing, which reads
+            # as "this model has no spread" instead of "this file does not carry it"
+            print(f"{tag} WARNING: show_rlzs=True but this file stores no per-realization "
+                  f"curves (the job did not set individual_rlzs = true). Plotting the "
+                  f"statistics only.")
+            show_rlzs = False
         q_stats = [s for s in self.stats if s.startswith("quantile")]
         print(f"{tag} plot_uhs_sets | PoEs: {poe} | stats: mean + "
               f"{len(q_stats)} quantiles + "
@@ -528,12 +551,15 @@ class PSHA_HDF5:
                      label=label)
 
             if reference_value:
+                # one line per IMT carrying every reference PoE. The label used to be built
+                # from `val` after the loop had ended, so every line announced the last PoE
+                # while listing the values of all of them.
                 parts = []
                 for val in reference_value:
                     sa_ref = interpolate_sa_at_reference(poe_vals, sa_values, val)
-                    parts.append(f"{label}={sa_ref:.3f}g")
-                print(f"{tag} PoE={val:.3f} -> {' | '.join(parts)}")
-                interp_summary.extend(parts)
+                    parts.append(f"PoE={val:.3f}: {sa_ref:.3f}g")
+                print(f"{tag} {label:10s} -> {' | '.join(parts)}")
+                interp_summary.extend(f"{label}@{p}" for p in parts)
 
         if reference_value:
             for val in reference_value:
@@ -591,8 +617,10 @@ class PSHA_HDF5:
             print(f"{tag} Figures saved: {os.path.basename(save_path)}_hazardcurves_PoE.svg / "
                   f"_hazardcurves_AnualExcedence.svg")
 
-            plt.show()
-
+        # plt.show() used to sit inside the `if save_path` branch, so calling this without a
+        # save_path built both figures, closed them, and displayed nothing -- which is exactly
+        # how it gets called from a notebook.
+        plt.show()
         plt.close("all")
         return df_out
 
