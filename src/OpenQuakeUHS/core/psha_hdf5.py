@@ -231,6 +231,68 @@ class PSHA_HDF5:
             return f"q{int(round(float(m.group(1)) * 100))}"
         return stat
 
+    @staticmethod
+    def _draw_overlay(ax_poe, ax_rate, overlay, period_color, label, N, tag, xlim):
+        """Draw reference points on both hazard-curve frames. See plot_hazard_curves.
+
+        Periods are matched exactly against the curves that were actually drawn. A row for a
+        period that is not on the plot is counted and reported, never snapped to the nearest
+        one: 0.07 s and 0.075 s are different ordinates, and quietly merging them would put
+        somebody else's number on our curve.
+        """
+        drawn = skipped = censored = 0
+        outside = 0
+        for _, row in overlay.iterrows():
+            color = period_color.get(float(row["period"]))
+            if color is None:
+                skipped += 1
+                continue
+            is_cens = bool(row.get("censored", False))
+            censored += is_cens
+            y_poe = float(row["poe"])
+            y_rate = float(calculate_inv_Tr_from_poes([y_poe], N=N)[0])
+
+            for ax_obj, y in ((ax_poe, y_poe), (ax_rate, y_rate)):
+                lo, hi = row.get("lo"), row.get("hi")
+                if lo is not None and hi is not None and np.isfinite(lo) and np.isfinite(hi):
+                    ax_obj.plot([lo, hi], [y, y], color=color, linewidth=1.0,
+                                alpha=0.8, solid_capstyle="butt", zorder=4)
+                ax_obj.plot(float(row["Sa"]), y,
+                            marker=">" if is_cens else "s",
+                            markersize=7 if is_cens else 5,
+                            markerfacecolor="none" if is_cens else color,
+                            markeredgecolor=color, markeredgewidth=1.3,
+                            linestyle="none", zorder=5)
+            drawn += 1
+
+        # one neutral proxy for the legend. Labelling the first real point instead would put
+        # that period's colour on the swatch and read as if the overlay were only that curve's
+        if drawn and label:
+            for ax_obj in (ax_poe, ax_rate):
+                ax_obj.plot([], [], marker="s", markersize=5, linestyle="none",
+                            markerfacecolor="0.35", markeredgecolor="0.35", label=label)
+
+        # a point beyond the x range is simply not on the paper; say so rather than let the
+        # reader take the overlay as ending where the markers end
+        if xlim is not None:
+            outside = int(sum(1 for _, r in overlay.iterrows()
+                              if period_color.get(float(r["period"])) is not None
+                              and not (xlim[0] <= float(r["Sa"]) <= xlim[1])))
+
+        msg = f"{tag} overlay: {drawn} points drawn"
+        if censored:
+            msg += (f", {censored} censored (hollow '>' marker: the publisher's own ceiling, "
+                    f"so the true value is at or above it)")
+        if skipped:
+            msg += f", {skipped} skipped (their period is not among the curves drawn)"
+        if outside:
+            top = max(float(r["Sa"]) for _, r in overlay.iterrows()
+                      if period_color.get(float(r["period"])) is not None)
+            msg += (f", {outside} OUTSIDE the x range {xlim} and not visible -- widen it to "
+                    f"about (0.01, {top * 1.05:.2f}). xlim=None autoscales to the full IML "
+                    f"grid instead, which flattens the plot")
+        print(msg)
+
     # -------------------------------------------------------------------------
     # Public methods
     # -------------------------------------------------------------------------
@@ -489,10 +551,12 @@ class PSHA_HDF5:
                     print(f"{tag} PEER file saved: {os.path.basename(csv_name)}")
 
 
-    def plot_hazard_curves(self, 
+    def plot_hazard_curves(self,
                             periods, reference_value=None,
-                            title=None, 
-                            PRY_name="PRY", save_path=None):
+                            title=None,
+                            PRY_name="PRY", save_path=None,
+                            overlay=None, overlay_label=None,
+                            xlim=(0.01, 2.0)):
         """
         Plot mean hazard curves (Sa vs PoE and Sa vs annual exceedance rate)
         for the requested periods.
@@ -504,15 +568,41 @@ class PSHA_HDF5:
         title           : str or None
         PRY_name        : str
         save_path       : str or None
+        overlay         : DataFrame or None
+            Reference points to draw on top of the curves -- a published map, a design code,
+            another model, instrumental data. One row per point, with columns:
+
+              period    the period it belongs to, matched EXACTLY against `periods`; a row
+                        whose period is not being drawn is reported and skipped, never
+                        snapped to the nearest one
+              Sa        intensity, in g (the x coordinate)
+              poe       probability of exceedance in the investigation time (the y coordinate
+                        on the PoE figure). The annual-rate figure places the same point with
+                        calculate_inv_Tr_from_poes, so both frames stay consistent
+              lo, hi    optional, an uncertainty band drawn as a horizontal whisker
+              censored  optional bool. True marks a value that hit the ceiling of whoever
+                        published it and is really a lower bound; drawn as a hollow marker
+                        with a right-pointing arrow instead of a filled one, because plotting
+                        it as an ordinary point invents an agreement or a gap that the data
+                        does not support
+
+            Points take the colour of the curve of their period, so they read as belonging to
+            it, and share a single legend entry.
+        overlay_label   : str or None -- legend entry for the overlay
+        xlim            : tuple or None
+            x range in g. None lets matplotlib fit the data, which is what you want when the
+            overlay reaches past the curves; the default keeps the historical frame.
         """
         tag = "[PSHA_HDF5]"
         print(f"{tag} plot_hazard_curves | periods: {periods} | "
-              f"refs: {reference_value}")
+              f"refs: {reference_value}"
+              + (f" | overlay: {len(overlay)} points" if overlay is not None else ""))
 
         N          = self.investigation_time
         stat_idx   = self._stat_idx["mean"]
         ref_inv_Tr = calculate_inv_Tr_from_poes(reference_value, N=N) \
                      if reference_value else []
+        period_color = {}          # filled as each curve is drawn, so the overlay can match
 
         fig1, ax1 = plt.subplots(figsize=(6, 4))
         fig2, ax2 = plt.subplots(figsize=(6, 4))
@@ -539,15 +629,18 @@ class PSHA_HDF5:
             label     = "PGA" if imt_str == "PGA" else f"SA({period:.2f})"
             is_pga    = imt_str == "PGA"
 
-            ax1.plot(sa_values, poe_vals,
-                     "-o" if is_pga else "-",
-                     linewidth=1.8 if is_pga else 1.5,
-                     color="red" if is_pga else None,
-                     label=label)
+            line, = ax1.plot(sa_values, poe_vals,
+                             "-o" if is_pga else "-",
+                             linewidth=1.8 if is_pga else 1.5,
+                             color="red" if is_pga else None,
+                             label=label)
+            # the colour matplotlib just handed out, so an overlay point can be drawn in the
+            # colour of the curve it belongs to instead of a palette of its own
+            period_color[period] = line.get_color()
             ax2.plot(sa_values, inv_Tr,
                      "-o" if is_pga else "-",
                      linewidth=1.8 if is_pga else 1.5,
-                     color="red" if is_pga else None,
+                     color=line.get_color(),
                      label=label)
 
             if reference_value:
@@ -560,6 +653,9 @@ class PSHA_HDF5:
                     parts.append(f"PoE={val:.3f}: {sa_ref:.3f}g")
                 print(f"{tag} {label:10s} -> {' | '.join(parts)}")
                 interp_summary.extend(f"{label}@{p}" for p in parts)
+
+        if overlay is not None and len(overlay):
+            self._draw_overlay(ax1, ax2, overlay, period_color, overlay_label, N, tag, xlim)
 
         if reference_value:
             for val in reference_value:
@@ -576,7 +672,8 @@ class PSHA_HDF5:
             (ax2, "Annual Rate Exceedance", (1e-5, 0.1)),
         ):
             ax_obj.set_yscale("log")
-            ax_obj.set_xlim(0.01, 2.0)
+            if xlim is not None:
+                ax_obj.set_xlim(*xlim)
             ax_obj.set_ylim(*ylim)
             ax_obj.set_xlabel("Spectral Acceleration [g]", fontweight="bold")
             ax_obj.set_ylabel(ylabel, fontweight="bold")
